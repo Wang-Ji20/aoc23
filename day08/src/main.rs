@@ -1,10 +1,16 @@
 //! https://adventofcode.com/2023/day/8
 //!
-use std::{collections::HashMap, iter::Cycle, ops::ControlFlow, str::Chars};
+use std::{
+    collections::{HashMap, HashSet},
+    iter::Cycle,
+    ops::ControlFlow,
+    str::Chars,
+};
 
 fn main() {
     let s = std::fs::read_to_string("day08.in").unwrap();
-    println!("{}", execute_all(&s));
+    println!("{}", execute_all(&s, "AAA"));
+    println!("{}", execute_all_p2(&s));
 }
 
 // Data representation
@@ -45,6 +51,7 @@ fn parse_map_pair(line_text: &str) -> (State, Transition) {
     (state, (left_transition, right_transition))
 }
 
+// To represent instructions as streams (infinity iterator) of String
 type InstStream<'a> = Cycle<Chars<'a>>;
 
 #[test]
@@ -54,23 +61,24 @@ fn test_parse_instruction() {
     assert_eq!(stream.take(4).collect::<String>(), "LRLR");
 }
 
-// To represent instructions as streams (infinity iterator) of String
 fn parse_instruction(inst: &str) -> InstStream<'_> {
     inst.chars().cycle()
 }
 
-fn inst_count(map: &DesertMap, insts: InstStream) -> u64 {
-    match insts.zip(1..).try_fold((0_u64, "AAA"), |acc, (inst, idx)| {
-        let next = match inst {
-            'L' => map.get(acc.1).unwrap().0.as_str(),
-            'R' => map.get(acc.1).unwrap().1.as_str(),
-            _ => panic!("bad pattern"),
-        };
-        match next {
-            "ZZZ" => ControlFlow::Break(acc.0 + 1),
-            _ => ControlFlow::Continue((acc.0 + 1, next)),
-        }
-    }) {
+fn inst_count(map: &DesertMap, insts: InstStream, init_v: &str) -> u64 {
+    match insts
+        .zip(1..)
+        .try_fold((0_u64, init_v), |acc, (inst, idx)| {
+            let next = match inst {
+                'L' => map.get(acc.1).unwrap().0.as_str(),
+                'R' => map.get(acc.1).unwrap().1.as_str(),
+                _ => panic!("bad pattern"),
+            };
+            match next.ends_with("Z") {
+                true => ControlFlow::Break(acc.0 + 1),
+                _ => ControlFlow::Continue((acc.0 + 1, next)),
+            }
+        }) {
         ControlFlow::Break(s) => s,
         _ => panic!("never happens"),
     }
@@ -88,7 +96,7 @@ GGG = (GGG, GGG)
 ZZZ = (ZZZ, ZZZ)";
     let desert_map = parse_desert_map(map);
     let insts = parse_instruction(inst_pat);
-    assert_eq!(2, inst_count(&desert_map, insts));
+    assert_eq!(2, inst_count(&desert_map, insts, "AAA"));
 }
 
 #[test]
@@ -124,10 +132,53 @@ DDD = (DDD, DDD)
 EEE = (EEE, EEE)
 GGG = (GGG, GGG)
 ZZZ = (ZZZ, ZZZ)";
-    println!("{}", execute_all(test_input));
+    println!("{}", execute_all(test_input, "AAA"));
 }
 
-fn execute_all(s: &str) -> u64 {
+fn execute_all(s: &str, init_v: &str) -> u64 {
     let (dm, inst) = parse_all(s).unwrap();
-    inst_count(&dm, inst)
+    inst_count(&dm, inst, init_v)
+}
+
+// part 2 specifics
+fn find_all_as(m: &DesertMap) -> HashSet<&str> {
+    let mut set = HashSet::new();
+    for k in m.keys() {
+        match k.ends_with("A") {
+            true => {
+                set.insert(k.as_str());
+            }
+            _ => continue,
+        }
+    }
+    set
+}
+
+fn calculate_p2(m: &DesertMap, insts: InstStream) -> u64 {
+    let start_with_as = find_all_as(m);
+    let mut lcm = 1_u64;
+    for a in start_with_as {
+        lcm = num::integer::lcm(lcm, inst_count(m, insts.clone(), a));
+    }
+    lcm
+}
+
+#[test]
+fn test_exec_p2() {
+    let test_text = "LR
+
+11A = (11B, XXX)
+11B = (XXX, 11Z)
+11Z = (11B, XXX)
+22A = (22B, XXX)
+22B = (22C, 22C)
+22C = (22Z, 22Z)
+22Z = (22B, 22B)
+XXX = (XXX, XXX)";
+    println!("{}", execute_all_p2(test_text))
+}
+
+fn execute_all_p2(s: &str) -> u64 {
+    let (dm, inst) = parse_all(s).unwrap();
+    calculate_p2(&dm, inst)
 }
